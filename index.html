@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Centro de Control - Reporte de Incidentes Vehiculares</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // Tus credenciales oficiales de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyCpZnObIn1TiolaYKwbF8D6wf-FPrmclwM",
+            authDomain: "monitoreo-logistica-179d8.firebaseapp.com",
+            databaseURL: "https://monitoreo-logistica-179d8-default-rtdb.firebaseio.com",
+            projectId: "monitoreo-logistica-179d8",
+            storageBucket: "monitoreo-logistica-179d8.firebasestorage.app",
+            messagingSenderId: "474445230598",
+            appId: "1:474445230598:web:b025f3d936c85c5fb10987",
+            measurementId: "G-PHM956BQZP"
+        };
+
+        // Inicializar Firebase y la Base de Datos
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Hacer las funciones accesibles globalmente para que el HTML viejo las reconozca
+        window.dbFirebase = db;
+        window.refFirebase = ref;
+        window.setFirebase = set;
+        window.pushFirebase = push;
+        window.onValueFirebase = onValue;
+        window.updateFirebase = update;
+    </script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0b0f19; color: #f3f4f6; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .leaflet-container { background: #0f172a; border-radius: 0.75rem; z-index: 1; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <div id="loginScreen" class="fixed inset-0 bg-[#070a13] z-[9999] flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 w-full max-w-md shadow-2xl relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-red-500"></div>
+            
+            <div class="text-center mb-8">
+                <div class="bg-blue-600/10 text-blue-500 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-blue-500/20">
+                    <i class="fa-solid fa-shield-halved text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-black tracking-wider text-slate-100 uppercase">Acceso Autenticado</h2>
+                <p class="text-xs text-slate-400 mt-1">Plataforma de Seguridad y Monitoreo Logístico</p>
+            </div>
+
+            <form id="loginForm" class="space-y-5">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Usuario Operativo</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+                            <i class="fa-solid fa-user"></i>
+                        </span>
+                        <input type="text" id="username" required placeholder="ej: nombre.apellido" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">Contraseña de Seguridad</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">
+                            <i class="fa-solid fa-lock"></i>
+                        </span>
+                        <input type="password" id="password" required placeholder="••••••••" class="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg transition duration-200 flex items-center justify-center gap-2 text-sm uppercase tracking-wider">
+                    <i class="fa-solid fa-right-to-bracket"></i> Validar Credenciales
+                </button>
+            </form>
+            
+            <div class="text-center mt-4">
+                <button type="button" onclick="resetToFactorySettings()" class="text-[11px] text-slate-500 hover:text-red-400 transition font-medium underline">
+                    <i class="fa-solid fa-arrows-rotate"></i> Restablecer Configuración de Fábrica
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="previewModal" class="fixed inset-0 bg-black/80 z-[1001] hidden items-center justify-center p-4">
+        <div class="bg-slate-900 border-2 border-blue-500/40 rounded-2xl p-6 w-full max-w-lg shadow-2xl flex flex-col">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+                <h3 class="text-sm font-bold text-blue-400 flex items-center gap-2 uppercase tracking-wider">
+                    <i class="fa-solid fa-file-invoice text-base"></i> Confirmación de Datos del Reporte
+                </h3>
+                <button type="button" onclick="closePreviewModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            
+            <div id="whatsappCard" class="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4 font-mono text-xs text-slate-200">
+                <div class="border-b border-slate-800 pb-2 flex justify-between items-center">
+                    <span class="text-blue-400 font-bold tracking-widest text-[13px]">🚨 ALERTA DE INCIDENTE</span>
+                    <span id="previewFecha" class="text-slate-500 text-[10px]"></span>
+                </div>
+                <div class="grid grid-cols-2 gap-y-3 gap-x-2">
+                    <div>
+                        <span class="text-slate-500 block uppercase text-[10px]">Cuenta Operativa</span>
+                        <span id="previewCuenta" class="text-slate-200 font-bold text-sm"></span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block uppercase text-[10px]">Unidad / Económico</span>
+                        <span id="previewVehiculo" class="text-slate-100 font-bold text-sm"></span>
+                    </div>
+                    <div class="col-span-2 border-t border-slate-900 pt-2">
+                        <span class="text-slate-500 block uppercase text-[10px]">Operador Asignado</span>
+                        <span id="previewOperador" class="text-slate-200 font-medium"></span>
+                    </div>
+                    <div class="col-span-2 border-t border-slate-900 pt-2 grid grid-cols-2 gap-2">
+                        <div>
+                            <span class="text-slate-500 block uppercase text-[10px]">Tipo de Incidente</span>
+                            <span id="previewTipo" class="text-red-400 font-bold"></span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block uppercase text-[10px]">Prioridad</span>
+                            <span id="previewGravedad" class="px-2 py-0.5 rounded font-bold inline-block text-[11px] mt-0.5"></span>
+                        </div>
+                    </div>
+                    <div class="col-span-2 border-t border-slate-900 pt-2">
+                        <span class="text-slate-500 block uppercase text-[10px]">Coordenadas Geográficas</span>
+                        <span id="previewCoordenadas" class="text-amber-400 font-bold"></span>
+                    </div>
+                    <div class="col-span-2 border-t border-slate-800 pt-2">
+                        <span class="text-slate-500 block uppercase text-[10px]">Descripción de los Hechos</span>
+                        <p id="previewDescripcion" class="text-slate-300 bg-slate-900/60 p-2.5 rounded border border-slate-800 text-justify font-sans leading-relaxed"></p>
+                    </div>
+                </div>
+                <div class="border-t border-slate-800 pt-2 text-[10px] text-slate-500 flex justify-between">
+                    <span>Analista: <b id="previewSupervisor" class="text-slate-400"></b></span>
+                    <span>Estatus: <b class="text-red-500 font-bold">ABIERTO</b></span>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <button type="button" onclick="copyToWhatsAppFormat()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md">
+                    <i class="fa-brands fa-whatsapp text-sm"></i> 1. Copiar para WhatsApp
+                </button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mt-3">
+                <button type="button" onclick="closePreviewModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs uppercase tracking-wider">
+                    <i class="fa-solid fa-pen-to-square"></i> Editar
+                </button>
+                <button type="button" onclick="commitIncidentRegistration()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-xl text-xs uppercase tracking-wider shadow-lg">
+                    <i class="fa-solid fa-circle-check"></i> 2. Insertar en Bitácora
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="appContent" class="hidden flex-col flex-grow">
+        <header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2.5 rounded-lg">
+                    <i class="fa-solid fa-tower-broadcast text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-wider text-slate-100 uppercase">Centro de Control de Monitoreo</h1>
+                    <p class="text-xs text-slate-400">Dirección de Seguridad y Control Operativo</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap justify-center">
+                <div class="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full border border-slate-700 text-xs">
+                    <i class="fa-solid fa-user-shield text-blue-400"></i>
+                    <span id="userBadge" class="text-slate-300 font-medium">Cargando...</span>
+                </div>
+                <button id="btnGestionUsuarios" type="button" onclick="toggleUserPanel()" class="hidden bg-purple-600 hover:bg-purple-700 text-white text-xs px-3 py-2 rounded-lg font-semibold items-center gap-2 transition duration-200">
+                    <i class="fa-solid fa-users-gear text-sm"></i> Gestionar Analistas
+                </button>
+                <button id="btnExportarCsv" type="button" onclick="exportToCSV()" class="hidden bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition duration-200">
+                    <i class="fa-solid fa-file-csv text-base"></i> Exportar CSV
+                </button>
+                <button type="button" onclick="handleLogout()" class="bg-slate-800 hover:bg-red-900/40 text-slate-300 hover:text-red-400 text-xs px-3 py-2 rounded-lg border border-slate-700 transition">
+                    <i class="fa-solid fa-right-from-bracket"></i> Salir
+                </button>
+            </div>
+        </header>
+
+        <section id="userManagementPanel" class="hidden p-4 lg:p-6 bg-slate-900/80 border-b border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-slate-900 border border-purple-500/30 p-4 rounded-xl shadow-md">
+                <h3 class="text-sm font-bold text-purple-400 mb-3 uppercase tracking-wider flex items-center gap-2">
+                    <i class="fa-solid fa-user-plus"></i> Dar de Alta Analista
+                </h3>
+                <form id="newUserForm" class="space-y-3 text-xs">
+                    <div>
+                        <label class="block text-slate-400 mb-1">Nombre Completo</label>
+                        <input type="text" id="newRealName" required placeholder="ej: Juan Pérez" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-slate-100 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Usuario (Login)</label>
+                        <input type="text" id="newUsername" required placeholder="ej: juan.perez" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-slate-100 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-slate-400 mb-1">Contraseña</label>
+                        <input type="password" id="newPassword" required placeholder="••••••••" class="w-full bg-slate-800 border border-slate-700 rounded p-2 text-slate-100 focus:outline-none">
+                    </div>
+                    <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded transition uppercase tracking-wider">
+                        Guardar Credenciales
+                    </button>
+                </form>
+            </div>
+            <div class="md:col-span-2 bg-slate-900 border border-slate-800 p-4 rounded-xl shadow-md flex flex-col">
+                <h3 class="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Analistas Registrados en la Nube</h3>
+                <div class="overflow-y-auto max-h-48 pr-1 space-y-2" id="usersListContainer"></div>
+            </div>
+        </section>
+
+        <main class="flex-grow p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <section id="panelIzquierdoForm" class="lg:col-span-4 flex flex-col gap-6">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
+                    <h2 class="font-bold text-slate-200 border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-circle-plus text-blue-500"></i> Registrar Nuevo Incidente
+                    </h2>
+                    
+                    <form id="incidentForm" class="space-y-4 text-sm">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Cuenta *</label>
+                                <select id="cuenta" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-slate-100 focus:outline-none">
+                                    <option value="Levic">Levic</option>
+                                    <option value="LSF">LSF</option>
+                                    <option value="GFC">GFC</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Económico *</label>
+                                <input type="text" id="vehiculo" required placeholder="ECO-402" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-slate-100 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Operador *</label>
+                                <input type="text" id="operador" required placeholder="Nombre" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-2 text-slate-100 focus:outline-none">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Tipo Incidente *</label>
+                                <select id="tipo" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:outline-none">
+                                    <option value="Falla Mecánica">🛠️ Falla Mecánica</option>
+                                    <option value="Accidente Vial">💥 Accidente Vial</option>
+                                    <option value="Intento de Robo">⚠️ Intento de Robo</option>
+                                    <option value="Asalto">🚨 Asalto</option>
+                                    <option value="Salida sin Folio">🚫 Salida sin Folio</option>
+                                    <option value="Cámara obstruida">📷 Cámara obstruida</option>
+                                    <option value="Retén Policial">🚔 Retén Policial</option>
+                                    <option value="Pérdida de Señal">📡 Pérdida de Señal</option>
+                                    <option value="Otro">❓ Otro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Prioridad *</label>
+                                <select id="gravedad" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:outline-none">
+                                    <option value="Baja">🟢 Baja</option>
+                                    <option value="Media">🟡 Media</option>
+                                    <option value="Alta">🔴 Alta</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Latitud *</label>
+                                <input type="number" step="any" id="lat" value="19.4326" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Longitud *</label>
+                                <input type="number" step="any" id="lng" value="-99.1332" required class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:outline-none">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-400 mb-1">Descripción institucional *</label>
+                            <textarea id="descripcion" required rows="3" placeholder="Detalles operativos..." class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-slate-100 focus:outline-none"></textarea>
+                        </div>
+
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition duration-200 text-xs uppercase tracking-wider">
+                            <i class="fa-solid fa-eye"></i> Previsualizar Ficha
+                        </button>
+                    </form>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex-grow flex flex-col justify-between">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+                        <h2 class="font-bold text-slate-200 flex items-center gap-2 text-sm">
+                            <i class="fa-solid fa-chart-simple text-blue-500"></i> Análisis de Turno
+                        </h2>
+                    </div>
+                    <div class="grid grid-cols-3 gap-3 mb-4">
+                        <div class="bg-slate-800/50 p-2 rounded border border-slate-800 text-center">
+                            <span class="text-[10px] text-slate-400 block">Total</span>
+                            <span id="kpiTotal" class="text-xl font-black text-blue-400">0</span>
+                        </div>
+                        <div class="bg-slate-800/50 p-2 rounded border border-slate-800 text-center">
+                            <span class="text-[10px] text-slate-400 block">Activos</span>
+                            <span id="kpiActivos" class="text-xl font-black text-amber-500">0</span>
+                        </div>
+                        <div class="bg-slate-800/50 p-2 rounded border border-slate-800 text-center">
+                            <span class="text-[10px] text-slate-400 block">Graves</span>
+                            <span id="kpiGraves" class="text-xl font-black text-red-500">0</span>
+                        </div>
+                    </div>
+                    <div class="h-44 relative">
+                        <canvas id="typeChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <section id="panelDerechoBitacora" class="lg:col-span-8 flex flex-col gap-6">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-lg">
+                    <div id="map" class="h-72 w-full rounded-lg border border-slate-800"></div>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex-grow flex flex-col">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-slate-800 pb-3 mb-4">
+                        <h2 class="font-bold text-slate-200 flex items-center gap-2">
+                            <i class="fa-solid fa-list-check text-blue-500"></i> Bitácora General
+                        </h2>
+                        
+                        <div class="flex items-center gap-2 bg-slate-950 p-2 rounded-lg border border-slate-800 text-xs">
+                            <div class="flex items-center gap-1">
+                                <span class="text-slate-500 text-[10px] uppercase font-bold">Desde:</span>
+                                <input type="date" id="filterFechaInicio" class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-1.5 py-0.5 focus:outline-none">
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="text-slate-500 text-[10px] uppercase font-bold">Hasta:</span>
+                                <input type="date" id="filterFechaFin" class="bg-slate-900 text-slate-200 border border-slate-700 rounded px-1.5 py-0.5 focus:outline-none">
+                            </div>
+                            <button type="button" onclick="clearFechaFilter()" class="text-slate-400 hover:text-red-400 px-1" title="Limpiar"><i class="fa-solid fa-circle-xmark"></i></button>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2 text-xs">
+                            <button type="button" onclick="filterIncidentes('todos')" id="btnFiltro-todos" class="px-3 py-1 rounded bg-blue-600 text-white font-medium">Todos</button>
+                            <button type="button" onclick="filterIncidentes('Abierto')" id="btnFiltro-Abierto" class="px-3 py-1 rounded bg-slate-800 text-slate-300">Abiertos</button>
+                            <button type="button" onclick="filterIncidentes('En Proceso')" id="btnFiltro-EnProceso" class="px-3 py-1 rounded bg-slate-800 text-slate-300">En Curso</button>
+                            <button type="button" onclick="filterIncidentes('Resuelto')" id="btnFiltro-Resuelto" class="px-3 py-1 rounded bg-slate-800 text-slate-300">Resueltos</button>
+                        </div>
+                    </div>
+                    <div class="overflow-y-auto max-h-[340px] flex-grow pr-1" id="incidentList"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // Usuarios base iniciales del sistema (Se suben a la nube si no existen)
+        const CORE_USERS = [
+            { username: "eduardo.franco", password: "admin123", name: "Eduardo Franco", role: "admin" },
+            { username: "direccion.seguridad", password: "viewer2026", name: "Dirección de Seguridad", role: "direccion" },
+            { username: "mayra.hernandez", password: "31439", name: "Mayra Hernandez", role: "analista" },
+            { username: "roberto.morales", password: "32117", name: "Roberto Morales", role: "analista" },
+            { username: "jcarlos.sanchez", password: "14778", name: "Juan Carlos Sanchez", role: "analista" },
+            { username: "monica.diego", password: "32694", name: "Monica Diego", role: "analista" },
+            { username: "humberto.alvarez", password: "23718", name: "Humberto Alvarez", role: "analista" },
+            { username: "ivan.diaz", password: "30913", name: "Ivan Diaz", role: "analista" }
+        ];
+
+        let coreUsers = [];
+        let incidents = [];
+        let tempIncidentData = null; 
+        let map = null;
+        let markersGroup = null;
+        let chartInstance = null;
+        let currentFilter = 'todos';
+        let firebaseInitialized = false;
+
+        document.addEventListener("DOMContentLoaded", () => {
+            setupEventListeners();
+            // Esperar un breve instante para asegurar que los scripts del Head cargaron las variables globales
+            setTimeout(() => {
+                initializeRealtimeSync();
+                checkAppSession();
+            }, 800);
+        });
+
+        function setupEventListeners() {
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            document.getElementById('newUserForm').addEventListener('submit', createUser);
+            document.getElementById('incidentForm').addEventListener('submit', handleFormSubmit);
+            document.getElementById('filterFechaInicio').addEventListener('change', renderDashboard);
+            document.getElementById('filterFechaFin').addEventListener('change', renderDashboard);
+        }
+
+        // ================= CONEXIÓN Y SINCRONIZACIÓN EN TIEMPO REAL (FIREBASE) =================
+        function initializeRealtimeSync() {
+            if (!window.dbFirebase) {
+                console.error("Firebase no se ha inicializado correctamente en las librerías superiores.");
+                return;
+            }
+            firebaseInitialized = true;
+
+            // 1. Escuchar y Sincronizar Usuarios en Tiempo Real
+            const usersRef = window.refFirebase(window.dbFirebase, 'users');
+            window.onValueFirebase(usersRef, (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    // Convertir objeto de Firebase a Array para el sistema
+                    coreUsers = Object.values(data);
+                } else {
+                    // Si la base de datos está vacía, la inicializamos con tu equipo base
+                    coreUsers = [...CORE_USERS];
+                    CORE_USERS.forEach(u => {
+                        const newKey = u.username.replace('.', '_'); // Firebase no acepta puntos en las llaves
+                        window.setFirebase(window.refFirebase(window.dbFirebase, 'users/' + newKey), u);
+                    });
+                }
+                if(sessionStorage.getItem('session_role') === 'admin') {
+                    renderUsersList();
+                }
+            });
+
+            // 2. Escuchar y Sincronizar Incidentes en Tiempo Real
+            const incidentsRef = window.refFirebase(window.dbFirebase, 'incidents');
+            window.onValueFirebase(incidentsRef, (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    // Cargar incidentes y ordenarlos por fecha descendente (los más recientes primero)
+                    let rawList = Object.values(data);
+                    incidents = rawList.sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+                } else {
+                    incidents = [];
+                }
+                renderDashboard();
+            });
+        }
+
+        function checkAppSession() {
+            const active = sessionStorage.getItem('session_active');
+            const role = sessionStorage.getItem('session_role');
+            const name = sessionStorage.getItem('session_name');
+
+            const loginScreen = document.getElementById('loginScreen');
+            const appContent = document.getElementById('appContent');
+
+            if (active === 'true') {
+                loginScreen.classList.add('hidden');
+                loginScreen.style.display = 'none';
+                appContent.classList.remove('hidden');
+                appContent.style.display = 'flex';
+                document.getElementById('userBadge').textContent = name;
+
+                const leftPanel = document.getElementById('panelIzquierdoForm');
+                const rightPanel = document.getElementById('panelDerechoBitacora');
+                const btnExportar = document.getElementById('btnExportarCsv');
+                const btnGestion = document.getElementById('btnGestionUsuarios');
+
+                if (role === 'direccion' || role === 'viewer') {
+                    leftPanel.style.display = 'none';
+                    rightPanel.className = "lg:col-span-12 flex flex-col gap-6";
+                    btnExportar.style.display = 'none';
+                    btnGestion.style.display = 'none';
+                } else if (role === 'analista') {
+                    leftPanel.style.display = 'flex';
+                    rightPanel.className = "lg:col-span-8 flex flex-col gap-6";
+                    btnExportar.style.display = 'none';
+                    btnGestion.style.display = 'none';
+                } else if (role === 'admin') {
+                    leftPanel.style.display = 'flex';
+                    rightPanel.className = "lg:col-span-8 flex flex-col gap-6";
+                    btnExportar.style.display = 'inline-flex';
+                    btnGestion.style.display = 'inline-flex'; 
+                    renderUsersList();
+                }
+
+                if (!map) {
+                    setupControlMap();
+                    setupControlCharts();
+                }
+                renderDashboard();
+            } else {
+                loginScreen.classList.remove('hidden');
+                loginScreen.style.display = 'flex';
+                appContent.classList.add('hidden');
+                appContent.style.display = 'none';
+                document.getElementById('userManagementPanel').style.display = 'none';
+                document.getElementById('userManagementPanel').classList.add('hidden');
+            }
+        }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const inputUser = document.getElementById('username').value.trim().toLowerCase();
+            const inputPass = document.getElementById('password').value.trim();
+
+            const userFound = coreUsers.find(u => u.username === inputUser && u.password === inputPass);
+
+            if (userFound) {
+                sessionStorage.setItem('session_active', 'true');
+                sessionStorage.setItem('session_role', userFound.role);
+                sessionStorage.setItem('session_username', userFound.username);
+                sessionStorage.setItem('session_name', userFound.name);
+                checkAppSession();
+            } else {
+                Swal.fire({ title: 'Credenciales Inválidas', text: 'Clave o usuario incorrectos.', icon: 'error', confirmButtonColor: '#ef4444', background: '#1e293b', color: '#fff' });
+            }
+        }
+
+        function handleLogout() {
+            sessionStorage.clear();
+            if (map) { map.remove(); map = null; }
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            checkAppSession();
+        }
+
+        function toggleUserPanel() {
+            const panel = document.getElementById('userManagementPanel');
+            if (panel.classList.contains('hidden')) {
+                panel.classList.remove('hidden');
+                panel.style.display = 'grid';
+                renderUsersList();
+            } else {
+                panel.classList.add('hidden');
+                panel.style.display = 'none';
+            }
+        }
+
+        function createUser(e) {
+            e.preventDefault();
+            if(!firebaseInitialized) return;
+
+            const realName = document.getElementById('newRealName').value.trim();
+            const username = document.getElementById('newUsername').value.trim().toLowerCase();
+            const password = document.getElementById('newPassword').value.trim();
+
+            if (coreUsers.some(u => u.username === username)) {
+                Swal.fire({ title: 'Error', text: 'El nombre de usuario ya existe.', icon: 'warning', background: '#1e293b', color: '#fff' });
+                return;
+            }
+
+            const newUser = { username, password, name: realName, role: 'analista' };
+            const cleanKey = username.replace('.', '_');
+
+            // Insertar directamente en la base de datos de Firebase
+            window.setFirebase(window.refFirebase(window.dbFirebase, 'users/' + cleanKey), newUser).then(() => {
+                document.getElementById('newUserForm').reset();
+                Swal.fire({ title: 'Analista Registrado', text: 'Sincronizado en la nube con éxito.', icon: 'success', background: '#1e293b', color: '#fff', timer: 1500, showConfirmButton: false });
+            });
+        }
+
+        function deleteUser(username) {
+            if (username === 'eduardo.franco' || username === 'direccion.seguridad' || !firebaseInitialized) return;
+
+            Swal.fire({
+                title: '¿Eliminar Analista?',
+                text: `Se revocarán los accesos globales para el usuario: ${username}`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar',
+                background: '#1e293b',
+                color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const cleanKey = username.replace('.', '_');
+                    window.setFirebase(window.refFirebase(window.dbFirebase, 'users/' + cleanKey), null).then(() => {
+                        Swal.fire({ title: 'Eliminado', text: 'Accesos revocados.', icon: 'success', background: '#1e293b', color: '#fff', timer: 1000, showConfirmButton: false });
+                    });
+                }
+            });
+        }
+
+        function renderUsersList() {
+            const container = document.getElementById('usersListContainer');
+            if (!container) return;
+            container.innerHTML = '';
+
+            coreUsers.forEach(u => {
+                const div = document.createElement('div');
+                div.className = 'bg-slate-800/80 border border-slate-700 p-2.5 rounded flex justify-between items-center text-xs';
+                
+                const isSystem = u.username === 'eduardo.franco' || u.username === 'direccion.seguridad';
+                const actionButton = isSystem 
+                    ? `<span class="text-[10px] text-slate-500 uppercase tracking-widest font-bold font-mono">Sistema</span>`
+                    : `<button type="button" onclick="deleteUser('${u.username}')" class="text-red-400 hover:text-red-500 font-bold px-2 py-1"><i class="fa-solid fa-trash-can"></i></button>`;
+
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-200">${u.name} <span class="text-purple-400 font-mono text-[10px] ml-1">[${u.role}]</span></p>
+                        <p class="text-slate-400 font-mono text-[11px]">Usuario: ${u.username} | Contraseña: ${u.password}</p>
+                    </div>
+                    <div>${actionButton}</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function setupControlMap() {
+            if(map) return;
+            map = L.map('map').setView([19.4326, -99.1332], 11);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 20 }).addTo(map);
+            markersGroup = L.layerGroup().addTo(map);
+            
+            map.on('click', (e) => {
+                const currentRole = sessionStorage.getItem('session_role');
+                if(currentRole === 'viewer' || currentRole === 'direccion') return;
+                document.getElementById('lat').value = e.latlng.lat.toFixed(6);
+                document.getElementById('lng').value = e.latlng.lng.toFixed(6);
+            });
+        }
+
+        function setupControlCharts() {
+            const canvas = document.getElementById('typeChart');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Accidentes', 'Fallas', 'Seguridad', 'Otros'],
+                    datasets: [{ data: [0, 0, 0, 0], backgroundColor: ['#ef4444', '#eab308', '#a855f7', '#64748b'], borderWidth: 0 }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+        }
+
+        function handleFormSubmit(e) {
+            e.preventDefault();
+            const dateObj = new Date();
+            const dateStr = dateObj.toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
+            const isoDate = dateObj.toISOString().split('T')[0];
+            
+            // Generar folio temporal numérico basado en marcas de tiempo para evitar duplicados en la nube
+            const timeId = dateObj.getTime().toString().slice(-4);
+
+            tempIncidentData = {
+                id: `INC-2026-${timeId}`,
+                cuenta: document.getElementById('cuenta').value,
+                vehiculo: document.getElementById('vehiculo').value.trim().toUpperCase(),
+                operador: document.getElementById('operador').value.trim(),
+                tipo: document.getElementById('tipo').value,
+                gravedad: document.getElementById('gravedad').value,
+                lat: parseFloat(document.getElementById('lat').value) || 19.4326,
+                lng: parseFloat(document.getElementById('lng').value) || -99.1332,
+                descripcion: document.getElementById('descripcion').value.trim(),
+                estatus: "Abierto",
+                analista: sessionStorage.getItem('session_name'), 
+                fecha: dateStr,
+                fechaIso: isoDate
+            };
+
+            document.getElementById('previewFecha').textContent = tempIncidentData.fecha;
+            document.getElementById('previewCuenta').textContent = tempIncidentData.cuenta;
+            document.getElementById('previewVehiculo').textContent = tempIncidentData.vehiculo;
+            document.getElementById('previewOperador').textContent = tempIncidentData.operador;
+            document.getElementById('previewTipo').textContent = tempIncidentData.tipo;
+            document.getElementById('previewCoordenadas').textContent = `${tempIncidentData.lat}, ${tempIncidentData.lng}`;
+            document.getElementById('previewDescripcion').textContent = tempIncidentData.descripcion;
+            document.getElementById('previewSupervisor').textContent = tempIncidentData.analista;
+
+            const gravBadge = document.getElementById('previewGravedad');
+            gravBadge.textContent = tempIncidentData.gravedad.toUpperCase();
+            if(tempIncidentData.gravedad === 'Alta') gravBadge.className = "px-2 py-0.5 rounded font-bold inline-block text-[11px] mt-0.5 bg-red-950 text-red-400 border border-red-800/40";
+            else if(tempIncidentData.gravedad === 'Media') gravBadge.className = "px-2 py-0.5 rounded font-bold inline-block text-[11px] mt-0.5 bg-amber-950 text-amber-400 border border-amber-800/40";
+            else gravBadge.className = "px-2 py-0.5 rounded font-bold inline-block text-[11px] mt-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/40";
+
+            const modal = document.getElementById('previewModal');
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
+
+        function commitIncidentRegistration() {
+            if(!tempIncidentData || !firebaseInitialized) return;
+
+            // Guardar directamente en el nodo de incidentes de Firebase usando el ID como llave única
+            window.setFirebase(window.refFirebase(window.dbFirebase, 'incidents/' + tempIncidentData.id), tempIncidentData)
+            .then(() => {
+                document.getElementById('incidentForm').reset();
+                closePreviewModal();
+                Swal.fire({ title: 'Reporte Sincronizado', text: 'Guardado globalmente en la nube.', icon: 'success', timer: 1200, showConfirmButton: false, background: '#1e293b', color: '#fff' });
+            })
+            .catch((err) => {
+                Swal.fire({ title: 'Error de Red', text: 'Verifica las reglas de seguridad de tu base de datos.', icon: 'error', background: '#1e293b', color: '#fff' });
+            });
+        }
+
+        function clearFechaFilter() {
+            document.getElementById('filterFechaInicio').value = '';
+            document.getElementById('filterFechaFin').value = '';
+            renderDashboard();
+        }
+
+        function renderDashboard() {
+            const fInicio = document.getElementById('filterFechaInicio').value;
+            const fFin = document.getElementById('filterFechaFin').value;
+
+            let filtered = incidents.filter(i => {
+                const matchEstatus = (currentFilter === 'todos' || i.estatus === currentFilter);
+                let matchFecha = true;
+                if (fInicio && i.fechaIso < fInicio) matchFecha = false;
+                if (fFin && i.fechaIso > fFin) matchFecha = false;
+                return matchEstatus && matchFecha;
+            });
+
+            document.getElementById('kpiTotal').textContent = filtered.length;
+            document.getElementById('kpiActivos').textContent = filtered.filter(i => i.estatus !== 'Resuelto').length;
+            document.getElementById('kpiGraves').textContent = filtered.filter(i => i.gravedad === 'Alta' && i.estatus !== 'Resuelto').length;
+
+            if (markersGroup) {
+                markersGroup.clearLayers();
+                filtered.forEach(inc => {
+                    let color = inc.gravedad === 'Alta' ? '#ef4444' : inc.gravedad === 'Media' ? '#f59e0b' : '#10b981';
+                    const marker = L.circleMarker([inc.lat, inc.lng], { radius: 8, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 0.9 });
+                    marker.bindPopup(`<div class="text-xs"><b>${inc.tipo}</b><br>Eco: ${inc.vehiculo}</div>`);
+                    markersGroup.addLayer(marker);
+                });
+            }
+
+            const listContainer = document.getElementById('incidentList');
+            if (listContainer) {
+                listContainer.innerHTML = '';
+                if (filtered.length === 0) {
+                    listContainer.innerHTML = `<p class="text-center py-6 text-slate-500 text-xs">Sin registros bajo los criterios seleccionados.</p>`;
+                } else {
+                    filtered.forEach(inc => {
+                        const card = document.createElement('div');
+                        card.className = `bg-slate-800/40 border border-slate-800 rounded-lg p-3 mb-2 flex justify-between items-center text-xs`;
+                        
+                        const userRole = sessionStorage.getItem('session_role');
+                        const canModify = userRole !== 'viewer' && userRole !== 'direccion';
+                        const actionButtonHTML = (inc.estatus !== 'Resuelto' && canModify) 
+                            ? `<button type="button" onclick="updateStatus('${inc.id}', '${inc.estatus === 'Abierto' ? 'En Proceso' : 'Resuelto'}')" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-2 py-0.5 rounded text-[10px] mt-1 transition">Avanzar</button>` 
+                            : '';
+
+                        card.innerHTML = `
+                            <div>
+                                <p class="font-bold text-slate-200">${inc.id} - ${inc.tipo} (<span class="text-blue-400 font-mono">${inc.cuenta}</span>)</p>
+                                <p class="text-slate-400">Eco: ${inc.vehiculo} | Op: ${inc.operador} | Reg: ${inc.analista || 'Sistema'}</p>
+                                <p class="text-[10px] text-slate-500 mt-0.5"><i class="fa-solid fa-clock"></i> ${inc.fecha}</p>
+                            </div>
+                            <div class="text-right">
+                                <span class="block font-bold ${inc.estatus === 'Abierto' ? 'text-red-400' : inc.estatus === 'En Proceso' ? 'text-amber-400' : 'text-emerald-400'}">${inc.estatus}</span>
+                                ${actionButtonHTML}
+                            </div>
+                        `;
+                        listContainer.appendChild(card);
+                    });
+                }
+            }
+
+            if (chartInstance && chartInstance.ctx) {
+                let counts = [0, 0, 0, 0];
+                filtered.forEach(i => {
+                    if (i.tipo.includes('Accidente')) counts[0]++;
+                    else if (i.tipo.includes('Falla')) counts[1]++;
+                    else if (i.tipo.includes('Robo') || i.tipo.includes('Asalto')) counts[2]++;
+                    else counts[3]++;
+                });
+                chartInstance.data.datasets[0].data = counts;
+                chartInstance.update();
+            }
+        }
+
+        function updateStatus(incidentId, newStatus) {
+            if(!firebaseInitialized) return;
+            const currentRole = sessionStorage.getItem('session_role');
+            if(currentRole === 'viewer' || currentRole === 'direccion') return;
+            
+            // Actualizar el estatus directamente en la referencia del incidente en Firebase
+            window.updateFirebase(window.refFirebase(window.dbFirebase, 'incidents/' + incidentId), {
+                estatus: newStatus
+            });
+        }
+
+        function filterIncidentes(status) {
+            currentFilter = status;
+            ['todos', 'Abierto', 'En Proceso', 'Resuelto'].forEach(s => {
+                const btn = document.getElementById(`btnFiltro-${s.replace(' ', '')}`);
+                if(btn) {
+                    if(s === status) btn.className = "px-3 py-1 rounded bg-blue-600 text-white font-medium";
+                    else btn.className = "px-3 py-1 rounded bg-slate-800 text-slate-300";
+                }
+            });
+            renderDashboard();
+        }
+
+        function exportToCSV() {
+            if(sessionStorage.getItem('session_role') !== 'admin' || incidents.length === 0) return;
+            let csv = "data:text/csv;charset=utf-8,Folio,Cuenta,Vehiculo,Operador,Tipo,Gravedad,Estatus,Capturado_Por,Fecha\n";
+            incidents.forEach(i => csv += `"${i.id}","${i.cuenta}","${i.vehiculo}","${i.operador}","${i.tipo}","${i.gravedad}","${i.estatus}","${i.analista}","${i.fecha}"\n`);
+            const link = document.createElement("a"); link.setAttribute("href", encodeURI(csv));
+            link.setAttribute("download", "bitacora_seguridad.csv"); document.body.appendChild(link); link.click(); document.body.removeChild(link);
+        }
+
+        function copyToWhatsAppFormat() {
+            if(!tempIncidentData) return;
+            const whatsappText = `🚨 *ALERTA DE INCIDENTE LOGÍSTICO* 🚨\n----------------------------------------\n📌 *Folio:* ${tempIncidentData.id}\n🏢 *Cuenta:* ${tempIncidentData.cuenta}\n🚚 *Unidad:* ${tempIncidentData.vehiculo}\n👤 *Operador:* ${tempIncidentData.operador}\n⚠️ *Incidente:* ${tempIncidentData.tipo}\n🔥 *Prioridad:* ${tempIncidentData.gravedad.toUpperCase()}\n📍 *Coordenadas:* ${tempIncidentData.lat}, ${tempIncidentData.lng}\n📝 *Descripción:* ${tempIncidentData.descripcion}\n----------------------------------------\n🟢 *Estatus:* Abierto en Sistema\n👤 *Analista:* ${tempIncidentData.analista}`;
+            navigator.clipboard.writeText(whatsappText).then(() => {
+                Swal.fire({ title: '¡Texto Copiado!', text: 'Ficha en el portapapeles.', icon: 'success', background: '#1e293b', color: '#fff', timer: 1500, showConfirmButton: false });
+            });
+        }
+
+        function closePreviewModal() {
+            const modal = document.getElementById('previewModal');
+            modal.classList.add('hidden');
+            modal.style.display = 'none';
+            tempIncidentData = null;
+        }
+
+        function resetToFactorySettings() {
+            Swal.fire({
+                title: '¿Restablecer Aplicación Local?',
+                text: "Se limpiarán las sesiones activas en este navegador para volver a sincronizar la consola.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                cancelButtonColor: '#475569',
+                confirmButtonText: 'Sí, limpiar',
+                cancelButtonText: 'Cancelar',
+                background: '#1e293b',
+                color: '#fff'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    sessionStorage.clear();
+                    localStorage.clear();
+                    window.location.reload();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
